@@ -3,6 +3,6 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/gdg_ano-tara/',
+  base: '/ano_tara/',
   plugins: [react()],
 })
