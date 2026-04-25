@@ -106,6 +106,7 @@ function App() {
   const transitionRef = useRef("none");
   const itemsRef = useRef(null);
   const spinningRef = useRef(false);
+  const spinIdRef = useRef(0);
 
   // Keep ref in sync with state for timeouts
   useEffect(() => {
@@ -123,7 +124,7 @@ function App() {
   // Duplicate the list multiple times to create a long ribbon for spinning
   const ribbon = Array(15).fill(foodsList).flat();
 
-  const fetchFoods = async (budgetRange) => {
+  const fetchFoods = async (budgetRange, currentSpinId) => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === 'your_key_here') return;
@@ -132,21 +133,28 @@ function App() {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
-        You are helping someone decide what to eat in the Philippines.
-        The user's budget is: ${budgetRange} PHP.
+        You are a highly strict budget food picker for the Philippines.
+        The user's EXACT budget is: ${budgetRange} PHP.
         
-        Generate exactly 12 trending or popular food items in the Philippines that strictly fit this budget.
-        - If the budget is 50-100 PHP, ONLY suggest cheap street foods, bakeries, or snacks (like Fishball, Kwek Kwek, Taho, Siomai, Empanada). EXCLUDE expensive meals like Samgyup, Birria Tacos, or premium cafes.
-        - If the budget is 100-300 PHP, suggest proper budget meals, fast food, or mid-tier trending foods.
-        - If the budget is 300+ PHP, suggest proper meals, cafes, buffets, or slightly premium trending foods (like Samgyupsal, Dubai Chocolate).
+        CRITICAL RULES:
+        - For "50-100": ONLY suggest extremely cheap street foods, bakeries, or snacks (like Fishball, Kikiam, Kwek Kwek, Taho, Siomai, Pandesal). NO sit-down meals or expensive foods.
+        - For "100-300": Suggest local fast food, budget carinderia meals, or mid-tier trends. 
+        - For "300+": Suggest ONLY premium options like Cafes, K-BBQ, Buffets, or expensive trending foods (like Dubai Chocolate, Wagyu, High-end Matcha). YOU MUST EXCLUDE ALL CHEAP STREET FOODS. Do NOT suggest Isaw, Fishball, or Taho for a 300+ budget.
         
+        Generate exactly 12 trending or popular food items in the Philippines that STRICTLY obey these rules.
         Return ONLY a JSON array of objects. Do not include markdown formatting like \`\`\`json.
         Each object must have exactly two keys:
         - "display": A short, punchy name (max 15 chars) to display on a slot machine UI.
-        - "search": The formal, specific name to search on Google Maps to find local stores selling it (e.g. "Dubai Chewy Cookie", "Fishball Kikiam Kwek Kwek", "Pares").
+        - "search": The formal, specific name to search on Google Maps to find local stores selling it.
       `;
 
       const result = await model.generateContent(prompt);
+      
+      if (spinIdRef.current !== currentSpinId || !spinningRef.current) {
+        console.warn("Fetch finished too late or was superseded. Dropping result.");
+        return;
+      }
+
       const cleanJson = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
       const newFoods = JSON.parse(cleanJson);
 
@@ -163,8 +171,8 @@ function App() {
     setAppState('slot-machine');
     setAutoSpin(true);
 
-    // Fetch in the background mid-spin
-    fetchFoods(budgetRange);
+    spinIdRef.current += 1;
+    fetchFoods(budgetRange, spinIdRef.current);
   };
 
   const handleSpin = () => {
@@ -174,11 +182,12 @@ function App() {
     spinningRef.current = true;
     setDecided(false);
 
-    transitionRef.current = "transform 4s cubic-bezier(0.1, 0.7, 0.1, 1)";
+    // Increased spin duration to 6 seconds to give the AI plenty of time
+    transitionRef.current = "transform 6s cubic-bezier(0.1, 0.7, 0.1, 1)";
 
     // Pre-calculate target. Use a fixed length of 12 for the distance calculation
     // even if foodsList changes length mid-spin, the target distance remains valid.
-    const minSpins = 12 * 8;
+    const minSpins = 12 * 12; // increased total spins to match 6 seconds
     const randomIndex = Math.floor(Math.random() * 12);
     const targetIndex = minSpins + randomIndex;
     const targetPosition = targetIndex * ITEM_HEIGHT;
@@ -216,7 +225,7 @@ function App() {
       // Reset position silently for seamless re-spins
       transitionRef.current = "none";
       setPosition(landedItemIndex * ITEM_HEIGHT);
-    }, 4000);
+    }, 6000); // 6 seconds
   };
 
   const handleTaraClick = () => {
