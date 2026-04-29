@@ -92,6 +92,72 @@ const getTranslateY = (element) => {
   return 0;
 };
 
+const MapComponent = ({ userCoords, searchQuery }) => {
+  const mapRef = useRef(null);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (!window.google || !mapRef.current || initialized.current) return; // Prevent double init!
+    initialized.current = true;
+
+    const defaultLocation = { lat: 14.5995, lng: 120.9842 }; // Manila fallback
+    const location = userCoords || defaultLocation;
+
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: location,
+      zoom: 15,
+      mapTypeControl: false,
+      streetViewControl: false,
+    });
+
+    if (userCoords) {
+      new window.google.maps.Marker({
+        position: location,
+        map: map,
+        title: "You are here",
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: "#4285F4",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
+      });
+    }
+
+    const request = {
+      location: location,
+      radius: '5000',
+      query: searchQuery
+    };
+
+    const service = new window.google.maps.places.PlacesService(map);
+    service.textSearch(request, (results, status) => {
+      if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+        const bounds = new window.google.maps.LatLngBounds();
+        if (userCoords) {
+          bounds.extend(new window.google.maps.LatLng(userCoords.lat, userCoords.lng));
+        }
+
+        results.forEach((place) => {
+          new window.google.maps.Marker({
+            map,
+            position: place.geometry.location,
+            title: place.name
+          });
+          bounds.extend(place.geometry.location);
+        });
+        
+        map.fitBounds(bounds);
+      }
+    });
+
+  }, [userCoords, searchQuery]);
+
+  return <div ref={mapRef} style={{ width: '100%', height: '100%', borderRadius: '8px' }} />;
+};
+
 function App() {
   const [appState, setAppState] = useState('vibe-check'); // 'vibe-check', 'slot-machine'
   const [foodsList, setFoodsList] = useState(DEFAULT_FOODS);
@@ -103,6 +169,8 @@ function App() {
   const [selectedFood, setSelectedFood] = useState(null);
   const [autoSpin, setAutoSpin] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [userCoords, setUserCoords] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
 
   const transitionRef = useRef("none");
   const itemsRef = useRef(null);
@@ -232,7 +300,27 @@ function App() {
 
   const handleTaraClick = () => {
     if (selectedFood) {
-      setShowMap(true);
+      if (!userCoords && "geolocation" in navigator) {
+        setIsLocating(true);
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserCoords({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            });
+            setIsLocating(false);
+            setShowMap(true);
+          },
+          (error) => {
+            console.warn("Geolocation failed or denied:", error);
+            setIsLocating(false);
+            setShowMap(true);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      } else {
+        setShowMap(true);
+      }
     }
   };
 
@@ -294,8 +382,9 @@ function App() {
         <button
           className="tara-btn"
           onClick={handleTaraClick}
+          disabled={isLocating}
         >
-          ano, tara?
+          {isLocating ? 'locating...' : 'ano, tara?'}
         </button>
         <button
           className="reroll-btn"
@@ -309,14 +398,7 @@ function App() {
         <div className="map-modal" onClick={() => setShowMap(false)}>
           <div className="map-container" onClick={(e) => e.stopPropagation()}>
             <button className="close-map-btn" onClick={() => setShowMap(false)}>✕</button>
-            <iframe 
-              title="Google Maps"
-              className="gmaps-iframe"
-              width="100%" 
-              height="100%" 
-              src={`https://www.google.com/maps/embed/v1/search?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&q=${encodeURIComponent(selectedFood.search + ' near me')}`}
-              allowFullScreen
-            ></iframe>
+            <MapComponent userCoords={userCoords} searchQuery={selectedFood.search} />
           </div>
         </div>
       )}
