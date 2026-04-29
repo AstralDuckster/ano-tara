@@ -1,4 +1,5 @@
 # 🍜 Ano Tara? – Smart Food Picker
+*Built during GDG Day 3 mini hackathon*
 
 A fun, fast, and practical web app inspired by the Filipino **“ano tara”** trend—helping users decide what to eat based on budget, randomness, and nearby availability.
 
