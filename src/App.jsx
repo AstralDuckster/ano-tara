@@ -91,72 +91,6 @@ const getTranslateY = (element) => {
   return 0;
 };
 
-const MapComponent = ({ userCoords, searchQuery }) => {
-  const mapRef = useRef(null);
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (!window.google || !mapRef.current || initialized.current) return; // Prevent double init!
-    initialized.current = true;
-
-    const defaultLocation = { lat: 14.5995, lng: 120.9842 }; // Manila fallback
-    const location = userCoords || defaultLocation;
-
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: location,
-      zoom: 15,
-      mapTypeControl: false,
-      streetViewControl: false,
-    });
-
-    if (userCoords) {
-      new window.google.maps.Marker({
-        position: location,
-        map: map,
-        title: "You are here",
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#4285F4",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
-      });
-    }
-
-    const request = {
-      location: location,
-      radius: '5000',
-      query: searchQuery
-    };
-
-    const service = new window.google.maps.places.PlacesService(map);
-    service.textSearch(request, (results, status) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-        const bounds = new window.google.maps.LatLngBounds();
-        if (userCoords) {
-          bounds.extend(new window.google.maps.LatLng(userCoords.lat, userCoords.lng));
-        }
-
-        results.forEach((place) => {
-          new window.google.maps.Marker({
-            map,
-            position: place.geometry.location,
-            title: place.name
-          });
-          bounds.extend(place.geometry.location);
-        });
-        
-        map.fitBounds(bounds);
-      }
-    });
-
-  }, [userCoords, searchQuery]);
-
-  return <div ref={mapRef} style={{ width: '100%', height: '100%', borderRadius: '8px' }} />;
-};
-
 function App() {
   const [appState, setAppState] = useState('vibe-check'); // 'vibe-check', 'slot-machine'
   const [foodsList, setFoodsList] = useState(DEFAULT_FOODS);
@@ -167,9 +101,6 @@ function App() {
   const [position, setPosition] = useState(0);
   const [selectedFood, setSelectedFood] = useState(null);
   const [autoSpin, setAutoSpin] = useState(false);
-  const [showMap, setShowMap] = useState(false);
-  const [userCoords, setUserCoords] = useState(null);
-  const [isLocating, setIsLocating] = useState(false);
 
   const transitionRef = useRef("none");
   const itemsRef = useRef(null);
@@ -231,7 +162,6 @@ function App() {
     setSpinning(true);
     spinningRef.current = true;
     setDecided(false);
-    setShowMap(false);
 
     // Increased spin duration to 6 seconds to give the AI plenty of time
     transitionRef.current = "transform 6s cubic-bezier(0.1, 0.7, 0.1, 1)";
@@ -281,26 +211,27 @@ function App() {
 
   const handleTaraClick = () => {
     if (selectedFood) {
-      if (!userCoords && "geolocation" in navigator) {
-        setIsLocating(true);
+      if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            setUserCoords({
-              lat: position.coords.latitude,
-              lng: position.coords.longitude
-            });
-            setIsLocating(false);
-            setShowMap(true);
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const query = encodeURIComponent(selectedFood.search);
+            const url = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${lat},${lng}`;
+            window.open(url, '_blank');
           },
           (error) => {
             console.warn("Geolocation failed or denied:", error);
-            setIsLocating(false);
-            setShowMap(true);
+            const query = encodeURIComponent(selectedFood.search);
+            const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+            window.open(url, '_blank');
           },
-          { enableHighAccuracy: true, timeout: 10000 }
+          { enableHighAccuracy: true, timeout: 5000 }
         );
       } else {
-        setShowMap(true);
+        const query = encodeURIComponent(selectedFood.search);
+        const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        window.open(url, '_blank');
       }
     }
   };
@@ -359,13 +290,12 @@ function App() {
         </div>
       </div>
 
-      <div className={`tara-btn-wrapper ${decided && !showMap ? 'visible' : ''}`}>
+      <div className={`tara-btn-wrapper ${decided ? 'visible' : ''}`}>
         <button
           className="tara-btn"
           onClick={handleTaraClick}
-          disabled={isLocating}
         >
-          {isLocating ? 'locating...' : 'ano, tara?'}
+          ano, tara?
         </button>
         <button
           className="reroll-btn"
@@ -374,15 +304,6 @@ function App() {
           ayoko nyan 💀
         </button>
       </div>
-
-      {showMap && selectedFood && (
-        <div className="map-modal" onClick={() => setShowMap(false)}>
-          <div className="map-container" onClick={(e) => e.stopPropagation()}>
-            <button className="close-map-btn" onClick={() => setShowMap(false)}>✕</button>
-            <MapComponent userCoords={userCoords} searchQuery={selectedFood.search} />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
